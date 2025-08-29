@@ -1,0 +1,280 @@
+import pygame
+import random
+import math
+import sys
+
+# Initialize pygame
+pygame.init()
+
+# Screen dimensions
+WIDTH, HEIGHT = 800, 600
+screen = pygame.display.set_mode((WIDTH, HEIGHT))
+pygame.display.set_caption("Bouquet for the Queen")
+
+# Colors
+SKY_BLUE = (135, 206, 235)
+GRASS_GREEN = (126, 200, 80)
+PINK = (255, 182, 193)
+DARK_PINK = (255, 105, 180)
+RED = (255, 0, 0)
+YELLOW = (255, 255, 0)
+PURPLE = (128, 0, 128)
+WHITE = (255, 255, 255)
+GOLD = (255, 215, 0)
+
+# Game states
+COLLECTING = 0
+PRESENTING = 1
+CELEBRATING = 2
+
+class Flower:
+    def __init__(self):
+        self.x = random.randint(50, WIDTH - 50)
+        self.y = random.randint(50, HEIGHT - 150)
+        self.color = random.choice([PINK, RED, YELLOW, PURPLE, WHITE])
+        self.size = random.randint(20, 30)
+        self.collected = False
+        
+    def draw(self):
+        if not self.collected:
+            # Draw stem
+            pygame.draw.line(screen, GRASS_GREEN, (self.x, self.y), (self.x, self.y + 30), 2)
+            
+            # Draw flower
+            pygame.draw.circle(screen, self.color, (self.x, self.y), self.size // 2)
+            
+            # Draw center
+            pygame.draw.circle(screen, YELLOW, (self.x, self.y), self.size // 6)
+    
+    def check_collision(self, player_x, player_y):
+        distance = math.sqrt((self.x - player_x)**2 + (self.y - player_y)**2)
+        return distance < 30
+
+class Player:
+    def __init__(self):
+        self.x = WIDTH // 2
+        self.y = HEIGHT // 2
+        self.radius = 20
+        self.speed = 5
+        self.bouquet = []
+        
+    def move(self, keys):
+        if keys[pygame.K_LEFT] and self.x > self.radius:
+            self.x -= self.speed
+        if keys[pygame.K_RIGHT] and self.x < WIDTH - self.radius:
+            self.x += self.speed
+        if keys[pygame.K_UP] and self.y > self.radius:
+            self.y -= self.speed
+        if keys[pygame.K_DOWN] and self.y < HEIGHT - self.radius:
+            self.y += self.speed
+    
+    def draw(self):
+        # Draw player (a simple circle)
+        pygame.draw.circle(screen, (70, 130, 180), (self.x, self.y), self.radius)
+        
+        # Draw bouquet
+        for i, flower in enumerate(self.bouquet):
+            angle = i * (2 * math.pi / max(1, len(self.bouquet)))
+            offset_x = 30 * math.cos(angle)
+            offset_y = 30 * math.sin(angle)
+            
+            # Draw stem
+            pygame.draw.line(screen, GRASS_GREEN, 
+                            (self.x, self.y), 
+                            (self.x + offset_x, self.y + offset_y), 2)
+            
+            # Draw flower
+            pygame.draw.circle(screen, flower.color, 
+                              (self.x + offset_x, self.y + offset_y), 
+                              flower.size // 2)
+            
+            # Draw center
+            pygame.draw.circle(screen, YELLOW, 
+                              (self.x + offset_x, self.y + offset_y), 
+                              flower.size // 6)
+
+class Firework:
+    def __init__(self):
+        self.x = random.randint(100, WIDTH - 100)
+        self.y = random.randint(100, HEIGHT - 100)
+        self.color = random.choice([PINK, RED, YELLOW, PURPLE, WHITE, GOLD])
+        self.size = random.randint(3, 6)
+        self.particles = []
+        self.exploded = False
+        self.timer = random.randint(20, 40)
+        
+        for _ in range(100):
+            angle = random.uniform(0, 2 * math.pi)
+            speed = random.uniform(2, 8)
+            self.particles.append([self.x, self.y, math.cos(angle) * speed, math.sin(angle) * speed, random.randint(10, 30)])
+    
+    def update(self):
+        if not self.exploded:
+            self.timer -= 1
+            if self.timer <= 0:
+                self.exploded = True
+        else:
+            for p in self.particles:
+                p[0] += p[2]
+                p[1] += p[3]
+                p[4] -= 0.5  # Particle life
+    
+    def draw(self):
+        if not self.exploded:
+            pygame.draw.circle(screen, self.color, (self.x, self.y), self.size)
+        else:
+            for p in self.particles:
+                if p[4] > 0:
+                    alpha = min(255, p[4] * 8)
+                    color = (self.color[0], self.color[1], self.color[2], alpha)
+                    pygame.draw.circle(screen, color, (int(p[0]), int(p[1])), 2)
+
+def draw_text(text, size, color, x, y, centered=True):
+    font = pygame.font.SysFont(None, size)
+    text_surface = font.render(text, True, color)
+    if centered:
+        text_rect = text_surface.get_rect(center=(x, y))
+    else:
+        text_rect = text_surface.get_rect(topleft=(x, y))
+    screen.blit(text_surface, text_rect)
+
+def main():
+    clock = pygame.time.Clock()
+    player = Player()
+    flowers = [Flower() for _ in range(20)]
+    game_state = COLLECTING
+    fireworks = []
+    message_alpha = 0
+    celebration_timer = 300  # 5 seconds at 60 FPS
+    
+    running = True
+    while running:
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                running = False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    running = False
+                if event.key == pygame.K_r and game_state == CELEBRATING:
+                    # Reset game
+                    player = Player()
+                    flowers = [Flower() for _ in range(20)]
+                    game_state = COLLECTING
+                    fireworks = []
+                    message_alpha = 0
+        
+        # Fill the screen with background
+        screen.fill(SKY_BLUE)
+        
+        # Draw grass
+        pygame.draw.rect(screen, GRASS_GREEN, (0, HEIGHT - 100, WIDTH, 100))
+        
+        if game_state == COLLECTING:
+            # Move player
+            keys = pygame.key.get_pressed()
+            player.move(keys)
+            
+            # Check for flower collection
+            for flower in flowers:
+                if not flower.collected and flower.check_collision(player.x, player.y):
+                    flower.collected = True
+                    player.bouquet.append(flower)
+            
+            # Draw flowers
+            for flower in flowers:
+                flower.draw()
+            
+            # Draw player with bouquet
+            player.draw()
+            
+            # Draw flower counter
+            draw_text(f"Flowers: {len(player.bouquet)}/20", 36, WHITE, 10, 10, False)
+            
+            # Check if all flowers are collected
+            if len(player.bouquet) >= 20:
+                game_state = PRESENTING
+                
+        elif game_state == PRESENTING:
+            # Draw queen (simplified)
+            pygame.draw.rect(screen, (100, 100, 100), (WIDTH // 2 - 50, HEIGHT - 150, 100, 100))
+            pygame.draw.circle(screen, (255, 200, 150), (WIDTH // 2, HEIGHT - 150), 30)
+            pygame.draw.circle(screen, GOLD, (WIDTH // 2, HEIGHT - 150), 40, 5)
+            
+            # Draw player with bouquet
+            player.draw()
+            
+            # Move player toward queen
+            if player.x < WIDTH // 2:
+                player.x += 2
+            elif player.x > WIDTH // 2:
+                player.x -= 2
+                
+            if player.y > HEIGHT - 120:
+                player.y -= 2
+            else:
+                # When player reaches queen
+                game_state = CELEBRATING
+                
+        elif game_state == CELEBRATING:
+            # Draw queen with bouquet
+            pygame.draw.rect(screen, (100, 100, 100), (WIDTH // 2 - 50, HEIGHT - 150, 100, 100))
+            pygame.draw.circle(screen, (255, 200, 150), (WIDTH // 2, HEIGHT - 150), 30)
+            pygame.draw.circle(screen, GOLD, (WIDTH // 2, HEIGHT - 150), 40, 5)
+            
+            # Draw big bouquet
+            for i in range(20):
+                angle = i * (2 * math.pi / 20)
+                offset_x = 60 * math.cos(angle)
+                offset_y = 60 * math.sin(angle)
+                
+                # Draw stem
+                pygame.draw.line(screen, GRASS_GREEN, 
+                                (WIDTH // 2, HEIGHT - 120), 
+                                (WIDTH // 2 + offset_x, HEIGHT - 120 + offset_y), 3)
+                
+                # Draw flower
+                color = flowers[i].color if i < len(flowers) else PINK
+                pygame.draw.circle(screen, color, 
+                                  (WIDTH // 2 + offset_x, HEIGHT - 120 + offset_y), 
+                                  15)
+                
+                # Draw center
+                pygame.draw.circle(screen, YELLOW, 
+                                  (WIDTH // 2 + offset_x, HEIGHT - 120 + offset_y), 
+                                  5)
+            
+            # Create fireworks
+            if random.random() < 0.1 and len(fireworks) < 15:
+                fireworks.append(Firework())
+            
+            # Update and draw fireworks
+            for fw in fireworks[:]:
+                fw.update()
+                fw.draw()
+                
+                # Remove expired fireworks
+                if fw.exploded and all(p[4] <= 0 for p in fw.particles):
+                    fireworks.remove(fw)
+            
+            # Display message with fading effect
+            message_alpha = min(255, message_alpha + 2)
+            text_surface = pygame.font.SysFont(None, 60).render(
+                "I lovee youuu sooooo muchhhhhhh Myyyyyy babyyyy", True, PINK)
+            text_surface.set_alpha(message_alpha)
+            text_rect = text_surface.get_rect(center=(WIDTH // 2, 100))
+            screen.blit(text_surface, text_rect)
+            
+            # Draw restart instruction
+            if celebration_timer <= 0:
+                draw_text("Press R to play again", 30, WHITE, WIDTH // 2, HEIGHT - 50)
+            else:
+                celebration_timer -= 1
+        
+        pygame.display.flip()
+        clock.tick(60)
+    
+    pygame.quit()
+    sys.exit()
+
+if __name__ == "__main__":
+    main()
